@@ -1,9 +1,9 @@
 ﻿# pack_source.ps1
-# 用于打包 TranslatorPro 源代码，自动排除虚拟环境、缓存、构建产物和敏感文件
+# 用于打包 CloudLingoStudio 源代码，自动排除虚拟环境、缓存、构建产物和敏感文件
 
-$ProjectPath = "D:\trans\2\TranslatorPro"
+$ProjectPath = "D:\trans\2\CloudLingoStudio"
 $OutputDir = "D:\trans\2"
-$ZipName = "TranslatorPro_source.zip"
+$ZipName = "CloudLingoStudio_source.zip"
 $ZipPath = Join-Path $OutputDir $ZipName
 
 $ExcludeDirs = @(
@@ -31,7 +31,7 @@ if (Test-Path $ZipPath) {
     Remove-Item $ZipPath -Force
 }
 
-$TempDir = Join-Path $OutputDir "TranslatorPro_source_temp"
+$TempDir = Join-Path $OutputDir "CloudLingoStudio_source_temp"
 
 if (Test-Path $TempDir) {
     Remove-Item $TempDir -Recurse -Force

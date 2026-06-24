@@ -152,6 +152,13 @@ THEME = {
         "scrollbar_button_color": ["#CBD5E1", "#475569"],
         "scrollbar_button_hover_color": ["#94A3B8", "#64748B"],
     },
+    "CTkProgressBar": {
+        "corner_radius": 1000,
+        "border_width": 0,
+        "fg_color": ["#E2E8F0", "#334155"],
+        "progress_color": [LIGHT["accent"], DARK["accent"]],
+        "border_color": [LIGHT["border"], DARK["border"]],
+    },
     "CTkScrollbar": {
         "corner_radius": 1000,
         "border_spacing": 4,

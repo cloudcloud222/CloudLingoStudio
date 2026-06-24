@@ -64,7 +64,9 @@ class DocumentTranslator:
 
     def create_output_path(self, source_path: str | Path, output_format: str = "docx") -> Path:
         source = Path(source_path)
-        out_dir = Path.home() / ".translator_pro" / "outputs"
+        settings = self.storage.get_settings() if self.storage else {}
+        configured_dir = str(settings.get("task_output_dir", "") or "").strip()
+        out_dir = Path(configured_dir).expanduser() if configured_dir else Path.home() / ".cloudlingo_studio" / "outputs"
         out_dir.mkdir(parents=True, exist_ok=True)
         stamp = time.strftime("%Y%m%d_%H%M%S")
         return out_dir / f"{safe_filename(source.stem)}_translated_{stamp}.{output_format}"

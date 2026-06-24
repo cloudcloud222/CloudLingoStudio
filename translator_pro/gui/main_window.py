@@ -46,6 +46,7 @@ from translator_pro.utils.storage import AppStorage
 from translator_pro.utils.tasks import BackgroundTask, BackgroundTaskManager
 from translator_pro.utils.text import count_chars, estimate_tokens
 from translator_pro.utils.exporter import export_docx, export_txt
+from translator_pro.utils.defaults import APP_NAME
 
 
 LANG_OPTIONS = ["自动检测", "中文", "英文", "日文", "韩文", "法文", "德文", "西班牙文", "俄文", "文言文"]
@@ -60,7 +61,7 @@ class TranslatorProApp(ctk.CTk):
         settings = self.storage.get_settings()
         ctk.set_appearance_mode("dark" if settings.get("theme") == "dark" else "light")
         super().__init__()
-        self.title("Translator Pro")
+        self.title(APP_NAME)
         self.geometry("1320x820")
         self.minsize(1120, 720)
         self.configure(fg_color=pair("bg"))
@@ -81,6 +82,8 @@ class TranslatorProApp(ctk.CTk):
 
         self.doc_translator = DocumentTranslator(self.storage)
         self.task_manager = BackgroundTaskManager(settings.get("max_concurrent_doc_tasks", 2))
+        self.is_task_panel_visible = False
+        self._task_dropdown: Optional[ctk.CTkToplevel] = None
 
         self._build_menu()  # 自定义顶部二级菜单，不使用原生菜单栏，避免古旧 Windows 风格。
         self._build_layout()
@@ -131,8 +134,8 @@ class TranslatorProApp(ctk.CTk):
 
         title_box = ctk.CTkFrame(top, fg_color="transparent")
         title_box.grid(row=0, column=1, pady=10)
-        label(title_box, "Translator Pro", size=18, weight="bold").pack()
-        label(title_box, "AI 文本与文档翻译工作台", size=12, secondary=True).pack(pady=(1, 0))
+        label(title_box, APP_NAME, size=18, weight="bold").pack()
+        label(title_box, "AI 文档翻译与术语管理工作台", size=12, secondary=True).pack(pady=(1, 0))
 
         right_nav = ctk.CTkFrame(top, fg_color="transparent")
         right_nav.grid(row=0, column=2, padx=18, pady=12, sticky="e")
@@ -190,10 +193,24 @@ class TranslatorProApp(ctk.CTk):
         self.source_text.bind("<KeyRelease>", lambda _e: self.update_char_count(), add="+")
 
     def _build_control_card(self, main) -> None:
-        ctrl = card(main, width=270)
-        ctrl.grid(row=0, column=1, sticky="ns", padx=0, pady=2)
-        ctrl.grid_propagate(False)
+        ctrl_card = card(main, width=284)
+        ctrl_card.grid(row=0, column=1, sticky="ns", padx=0, pady=2)
+        ctrl_card.grid_propagate(False)
+        ctrl_card.grid_columnconfigure(0, weight=1)
+        ctrl_card.grid_rowconfigure(0, weight=1)
+
+        # 中间控制区内容较多，在低分辨率或系统缩放较高时底部按钮会被遮挡。
+        # 改成可滚动控制面板，保证“导出译文 / 后台任务”等入口始终可通过滚轮访问。
+        ctrl = ctk.CTkScrollableFrame(
+            ctrl_card,
+            corner_radius=16,
+            fg_color=pair("card"),
+            border_color=pair("border"),
+            border_width=0,
+        )
+        ctrl.grid(row=0, column=0, sticky="nsew", padx=0, pady=0)
         ctrl.grid_columnconfigure(0, weight=1)
+
         label(ctrl, "翻译控制", size=18, weight="bold").grid(row=0, column=0, padx=20, pady=(20, 14), sticky="w")
 
         label(ctrl, "源语言", size=13, weight="bold").grid(row=1, column=0, padx=20, pady=(0, 6), sticky="w")
@@ -223,11 +240,11 @@ class TranslatorProApp(ctk.CTk):
         self.translate_button = modern_button(ctrl, "翻译  Ctrl+Enter", height=46, command=self.translate_text, kind="primary")
         self.translate_button.grid(row=11, column=0, padx=20, pady=(0, 10), sticky="ew")
         modern_button(ctrl, "复制结果", command=self.copy_result, kind="secondary", height=36).grid(row=12, column=0, padx=20, pady=5, sticky="ew")
-        modern_button(ctrl, "固定对比", command=self.pin_compare, kind="secondary", height=36).grid(row=13, column=0, padx=20, pady=5, sticky="ew")
+        self.pin_compare_btn = modern_button(ctrl, "固定对比", command=self.pin_compare, kind="secondary", height=36)
+        self.pin_compare_btn.grid(row=13, column=0, padx=20, pady=5, sticky="ew")
         modern_button(ctrl, "导出译文", command=self.export_result, kind="secondary", height=36).grid(row=14, column=0, padx=20, pady=5, sticky="ew")
-        self.task_btn = modern_button(ctrl, "后台任务", command=self.open_task_manager, kind="secondary", height=36)
-        self.task_btn.grid(row=15, column=0, padx=20, pady=5, sticky="ew")
-
+        self.task_btn = modern_button(ctrl, "后台任务中心", command=self.toggle_task_panel, kind="secondary", height=36)
+        self.task_btn.grid(row=15, column=0, padx=20, pady=(5, 20), sticky="ew")
 
     def _build_result_card(self, main) -> None:
         self.right_card = card(main)
@@ -661,13 +678,20 @@ class TranslatorProApp(ctk.CTk):
         self._show_toast("已复制", "译文已复制到剪贴板。")
 
     def pin_compare(self) -> None:
+        # “固定对比”现在作为开关使用：再次点击即可关闭对比区。
+        if self.compare_frame.winfo_ismapped():
+            self.compare_frame.grid_remove()
+            self.pinned_result = ""
+            if hasattr(self, "pin_compare_btn"):
+                self.pin_compare_btn.configure(text="固定对比")
+            self._show_toast("已关闭对比", "固定对比区已收起。")
+            return
+
         result = textbox_get_clean(self.result_text)
         if not result:
             self._show_toast("无法固定", "当前没有可固定的译文。")
             return
-        if not self.pinned_result:
-            self.pinned_result = result
-            self._show_toast("已固定", "请再次翻译或修改结果后，可与当前结果并排对比。")
+        self.pinned_result = result
         self.compare_frame.grid(row=2, column=0, sticky="ew", padx=20, pady=(0, 12))
         self.pinned_text.configure(state="normal")
         self.current_compare_text.configure(state="normal")
@@ -677,7 +701,9 @@ class TranslatorProApp(ctk.CTk):
         self.current_compare_text.insert("1.0", result)
         self.pinned_text.configure(state="disabled")
         self.current_compare_text.configure(state="disabled")
-        self.pinned_result = result
+        if hasattr(self, "pin_compare_btn"):
+            self.pin_compare_btn.configure(text="关闭对比")
+        self._show_toast("已开启对比", "当前译文已固定，可重新翻译后对照查看。")
 
     def export_result(self) -> None:
         result = textbox_get_clean(self.result_text)
@@ -760,6 +786,7 @@ class TranslatorProApp(ctk.CTk):
             while True:
                 ev = self.task_manager.events.get_nowait()
                 self.update_status(ev.get("message", ""))
+                self._refresh_task_panel()
                 if ev.get("event") == "done" and ev.get("output_path"):
                     self._flash_window()
                     self._show_toast("后台任务完成", f"输出文件：{ev.get('output_path')}")
@@ -771,15 +798,66 @@ class TranslatorProApp(ctk.CTk):
 
     def _spin_task_icon(self) -> None:
         running = self._running_task_count()
+        arrow = "▴" if self.is_task_panel_visible else "▾"
         if running > 0:
             self._spinner_index = (self._spinner_index + 1) % len(SPINNER_FRAMES)
             suffix = SPINNER_FRAMES[self._spinner_index]
             self.status_task_icon.configure(text=f"后台任务运行中{suffix}")
-            self.task_btn.configure(text=f"后台任务{suffix}")
+            self.task_btn.configure(text=f"后台任务{suffix} {arrow}")
         else:
             self.status_task_icon.configure(text="")
-            self.task_btn.configure(text="后台任务")
+            self.task_btn.configure(text=f"后台任务")
+        if self.is_task_panel_visible:
+            self._refresh_task_panel()
         self.after(300, self._spin_task_icon)
+
+    def toggle_task_panel(self) -> None:
+        # 打开独立的后台任务中心。相比旧版附着式弹层，普通窗口不会被主界面底部遮挡，
+        # 可自由拖动、缩放，也更适合展示多个任务进度和输出目录设置。
+        self.open_task_manager()
+
+    def _close_task_dropdown(self) -> None:
+        if self._task_dropdown is not None and self._task_dropdown.winfo_exists():
+            self._task_dropdown.destroy()
+        self._task_dropdown = None
+        self.is_task_panel_visible = False
+        self._spin_task_icon_once()
+
+    def _spin_task_icon_once(self) -> None:
+        running = self._running_task_count()
+        arrow = "▴" if self.is_task_panel_visible else "▾"
+        suffix = "…" if running > 0 else ""
+        self.task_btn.configure(text=f"后台任务{suffix} {arrow}")
+
+    def _refresh_task_panel(self) -> None:
+        if not hasattr(self, "task_list_frame"):
+            return
+        for child in self.task_list_frame.winfo_children():
+            child.destroy()
+        tasks = list(self.task_manager.all().values())
+        if not tasks:
+            label(self.task_list_frame, "暂无后台任务", size=12, secondary=True).grid(row=0, column=0, padx=8, pady=10, sticky="w")
+            return
+        for row, task in enumerate(tasks[-6:]):
+            state = task.state.value if hasattr(task.state, "value") else str(task.state)
+            total = task.progress_total or 0
+            done = task.progress_done or 0
+            percent = int(done * 100 / total) if total else 0
+            title = task.title if len(task.title) <= 18 else task.title[:17] + "…"
+            blocks = max(0, min(10, percent // 10))
+            bar_text = "█" * blocks + "░" * (10 - blocks)
+            info = f"{title}\n{state}  {done}/{total or '-'}  {percent}%  {task.message}\n{bar_text}"
+            label(self.task_list_frame, info, size=11, secondary=True, justify="left", wraplength=210).grid(row=row, column=0, columnspan=2, padx=8, pady=(8 if row == 0 else 4, 4), sticky="ew")
+
+    def _get_task_output_dir(self) -> Path:
+        settings = self.storage.get_settings()
+        configured_dir = str(settings.get("task_output_dir", "") or "").strip()
+        out_dir = Path(configured_dir).expanduser() if configured_dir else Path.home() / ".cloudlingo_studio" / "outputs"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        return out_dir
+
+    def open_task_output_dir(self) -> None:
+        self.open_path(str(self._get_task_output_dir()))
 
     def _shake_widget(self, widget) -> None:
         try:
@@ -840,7 +918,7 @@ class TranslatorProApp(ctk.CTk):
             pass
 
     def open_task_manager(self) -> None:
-        TaskManagerDialog(self, self.task_manager, self.open_path)
+        TaskManagerDialog(self, self.task_manager, self.open_path, self.storage, self.open_task_output_dir)
 
     def open_path(self, path: str) -> None:
         try:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-APP_NAME = "Translator Pro"
-CONFIG_DIR_NAME = ".translator_pro"
+APP_NAME = "CloudLingo Studio"
+CONFIG_DIR_NAME = ".cloudlingo_studio"
 CONFIG_FILE_NAME = "config.json"
 HISTORY_LIMIT = 50
 DEFAULT_LONG_DOC_THRESHOLD = 5000
@@ -117,7 +117,14 @@ DEFAULT_AGENTS = [
     },
 ]
 
-DEFAULT_GLOSSARY = []
+DEFAULT_GLOSSARY = [
+    {"id": "term-agent", "source": "AI Agent", "target": "智能体", "note": "AI 产品/Agent 场景"},
+    {"id": "term-prompt", "source": "Prompt", "target": "提示词", "note": "提示词工程"},
+    {"id": "term-token", "source": "Token", "target": "令牌", "note": "模型调用计量单位"},
+    {"id": "term-rag", "source": "RAG", "target": "检索增强生成", "note": "知识库问答"},
+    {"id": "term-embedding", "source": "Embedding", "target": "向量表示", "note": "语义检索"},
+]
+
 
 DEFAULT_SETTINGS = {
     "theme": "light",
@@ -128,6 +135,7 @@ DEFAULT_SETTINGS = {
     "default_source_lang": "自动检测",
     "default_target_lang": "中文",
     "show_reasoning_panel": True,
+    "task_output_dir": "",
     "last_api_id": "deepseek-chat-default",
     "last_agent_id": "faithful",
 }

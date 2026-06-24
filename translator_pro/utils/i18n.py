@@ -2,7 +2,7 @@ from __future__ import annotations
 
 TEXT = {
     "zh": {
-        "app_title": "Translator Pro 翻译软件",
+        "app_title": "CloudLingo Studio 云译工坊",
         "source": "原文",
         "result": "译文",
         "reasoning": "AI 思考过程",
@@ -27,7 +27,7 @@ TEXT = {
         "auto_detect": "自动检测",
     },
     "en": {
-        "app_title": "Translator Pro",
+        "app_title": "CloudLingo Studio",
         "source": "Source",
         "result": "Translation",
         "reasoning": "AI Reasoning",

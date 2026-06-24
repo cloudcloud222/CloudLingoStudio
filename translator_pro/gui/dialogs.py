@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 import customtkinter as ctk
@@ -9,6 +10,7 @@ from tkinter import filedialog, messagebox, ttk, BooleanVar
 from translator_pro.api.client import LLMClient
 from translator_pro.utils.exporter import export_docx, export_txt
 from translator_pro.utils.tasks import TaskState
+from translator_pro.utils.defaults import APP_NAME
 from translator_pro.gui.ui_style import (
     pair, font, card, soft_frame, modern_button, modern_option_menu, label,
     bind_focus_glow, apply_textbox_typography, setup_ttk_style, apply_recursive_fonts
@@ -460,7 +462,7 @@ class HistoryDialog(BaseDialog):
 
 class PreferencesDialog(BaseDialog):
     def __init__(self, master, storage, on_change: Callable[[], None]) -> None:
-        super().__init__(master, "设置 → 偏好设置", "520x360")
+        super().__init__(master, "设置 → 偏好设置", "680x430")
         self.storage = storage
         self.on_change = on_change
         self._build()
@@ -483,10 +485,26 @@ class PreferencesDialog(BaseDialog):
         ctk.CTkLabel(root, text="API 自动重试次数").grid(row=3, column=0, padx=14, pady=12, sticky="e")
         self.retry = _entry(root, s.get("auto_retry", 1), width=240)
         self.retry.grid(row=3, column=1, padx=14, pady=12, sticky="ew")
+
+        ctk.CTkLabel(root, text="后台任务输出目录").grid(row=4, column=0, padx=14, pady=12, sticky="e")
+        output_row = ctk.CTkFrame(root, fg_color="transparent")
+        output_row.grid(row=4, column=1, padx=14, pady=12, sticky="ew")
+        output_row.grid_columnconfigure(0, weight=1)
+        default_out = str(Path.home() / ".cloudlingo_studio" / "outputs")
+        self.output_dir = _entry(output_row, s.get("task_output_dir") or default_out, width=360)
+        self.output_dir.grid(row=0, column=0, sticky="ew")
+        modern_button(output_row, text="选择", command=self.choose_output_dir, kind="secondary", width=72).grid(row=0, column=1, padx=(8, 0))
+
         b = ctk.CTkFrame(root, fg_color="transparent")
-        b.grid(row=4, column=0, columnspan=2, padx=14, pady=18, sticky="ew")
+        b.grid(row=5, column=0, columnspan=2, padx=14, pady=18, sticky="ew")
         modern_button(b, text="保存", command=self.save).pack(side="right", padx=5)
         modern_button(b, text="关闭", command=self.destroy, kind="secondary").pack(side="right", padx=5)
+
+    def choose_output_dir(self) -> None:
+        selected = filedialog.askdirectory(title="选择后台任务输出目录")
+        if selected:
+            self.output_dir.delete(0, "end")
+            self.output_dir.insert(0, selected)
 
     def save(self) -> None:
         def i(v, d):
@@ -497,49 +515,169 @@ class PreferencesDialog(BaseDialog):
             long_doc_threshold=max(500, i(self.threshold.get(), 5000)),
             max_concurrent_doc_tasks=max(1, i(self.concurrent.get(), 2)),
             auto_retry=max(0, i(self.retry.get(), 1)),
+            task_output_dir=self.output_dir.get().strip(),
         )
         self.on_change()
         messagebox.showinfo("已保存", "偏好设置已保存，部分界面文本将在重启后完全刷新。")
 
 
 class TaskManagerDialog(BaseDialog):
-    def __init__(self, master, manager, on_open_output: Callable[[str], None]) -> None:
-        super().__init__(master, "后台任务管理器", "900x520")
+    def __init__(self, master, manager, on_open_output: Callable[[str], None], storage=None, on_open_output_dir: Optional[Callable[[], None]] = None) -> None:
+        super().__init__(master, "后台任务中心", "960x660")
+        self.minsize(820, 560)
         self.manager = manager
         self.on_open_output = on_open_output
+        self.storage = storage
+        self.on_open_output_dir = on_open_output_dir
         self._build()
         self.refresh()
         self.after(1000, self._tick)
 
     def _build(self) -> None:
-        root = card(self, corner_radius=16)
-        root.grid(row=0, column=0, sticky="nsew", padx=14, pady=14)
+        root = card(self, corner_radius=18)
+        root.grid(row=0, column=0, sticky="nsew", padx=16, pady=16)
         root.grid_columnconfigure(0, weight=1)
-        root.grid_rowconfigure(0, weight=1)
-        self.table = ttk.Treeview(root, columns=("title", "state", "progress", "message", "output"), show="headings", height=14)
-        for col, text, w in [("title", "任务", 180), ("state", "状态", 90), ("progress", "进度", 110), ("message", "说明", 240), ("output", "输出文件", 240)]:
-            self.table.heading(col, text=text); self.table.column(col, width=w)
-        self.table.grid(row=0, column=0, padx=12, pady=12, sticky="nsew")
-        b = ctk.CTkFrame(root, fg_color="transparent")
-        b.grid(row=1, column=0, padx=12, pady=10, sticky="ew")
-        modern_button(b, text="暂停", command=self.pause).pack(side="left", padx=4)
-        modern_button(b, text="继续", command=self.resume).pack(side="left", padx=4)
-        modern_button(b, text="取消", command=self.cancel, kind="danger").pack(side="left", padx=4)
-        modern_button(b, text="打开输出", command=self.open_output).pack(side="left", padx=4)
-        modern_button(b, text="刷新", command=self.refresh).pack(side="right", padx=4)
-        modern_button(b, text="关闭", command=self.destroy, kind="secondary").pack(side="right", padx=4)
+        root.grid_rowconfigure(2, weight=1)
 
-    def _selected(self):
-        sel = self.table.selection()
-        return sel[0] if sel else None
+        header = ctk.CTkFrame(root, fg_color="transparent")
+        header.grid(row=0, column=0, padx=18, pady=(18, 10), sticky="ew")
+        header.grid_columnconfigure(0, weight=1)
+        label(header, "后台任务中心", size=20, weight="bold").grid(row=0, column=0, sticky="w")
+        label(header, "查看多个文档翻译任务的状态、进度和输出结果", size=12, secondary=True).grid(row=1, column=0, pady=(2, 0), sticky="w")
+        modern_button(header, "刷新", command=self.refresh, kind="secondary", width=72, height=32).grid(row=0, column=1, rowspan=2, padx=(8, 8), sticky="e")
+        modern_button(header, "关闭", command=self.destroy, kind="secondary", width=72, height=32).grid(row=0, column=2, rowspan=2, sticky="e")
+
+        output = soft_frame(root)
+        output.grid(row=1, column=0, padx=18, pady=(0, 12), sticky="ew")
+        output.grid_columnconfigure(1, weight=1)
+        label(output, "输出文件夹", size=13, weight="bold").grid(row=0, column=0, padx=(14, 10), pady=14, sticky="w")
+        self.output_dir_entry = _entry(output, self._current_output_dir(), width=360)
+        self.output_dir_entry.grid(row=0, column=1, padx=(0, 8), pady=14, sticky="ew")
+        modern_button(output, "选择", command=self.choose_output_dir, kind="secondary", width=72, height=32).grid(row=0, column=2, padx=(0, 8), pady=14)
+        modern_button(output, "保存", command=self.save_output_dir, kind="primary", width=72, height=32).grid(row=0, column=3, padx=(0, 8), pady=14)
+        modern_button(output, "打开", command=self.open_output_dir, kind="secondary", width=72, height=32).grid(row=0, column=4, padx=(0, 14), pady=14)
+
+        self.task_list = ctk.CTkScrollableFrame(
+            root,
+            corner_radius=14,
+            fg_color=pair("card_soft"),
+            border_color=pair("border"),
+            border_width=1,
+        )
+        self.task_list.grid(row=2, column=0, padx=18, pady=(0, 14), sticky="nsew")
+        self.task_list.grid_columnconfigure(0, weight=1)
+
+        footer = ctk.CTkFrame(root, fg_color="transparent")
+        footer.grid(row=3, column=0, padx=18, pady=(0, 18), sticky="ew")
+        footer.grid_columnconfigure(0, weight=1)
+        label(footer, "提示：后台任务完成后可直接打开输出文件；未完成任务可暂停、继续或取消。", size=12, secondary=True).grid(row=0, column=0, sticky="w")
+
+    def _current_output_dir(self) -> str:
+        default_out = str(Path.home() / ".cloudlingo_studio" / "outputs")
+        if self.storage is None:
+            return default_out
+        settings = self.storage.get_settings()
+        return str(settings.get("task_output_dir") or default_out)
+
+    def choose_output_dir(self) -> None:
+        selected = filedialog.askdirectory(title="选择后台任务输出目录")
+        if selected:
+            self.output_dir_entry.delete(0, "end")
+            self.output_dir_entry.insert(0, selected)
+
+    def save_output_dir(self) -> None:
+        path = self.output_dir_entry.get().strip() or self._current_output_dir()
+        try:
+            Path(path).expanduser().mkdir(parents=True, exist_ok=True)
+        except Exception as exc:
+            messagebox.showerror("保存失败", f"输出目录不可用：{exc}")
+            return
+        if self.storage is not None:
+            self.storage.update_settings(task_output_dir=path)
+        messagebox.showinfo("已保存", "后台任务输出目录已更新。")
+
+    def open_output_dir(self) -> None:
+        self.save_output_dir()
+        if self.on_open_output_dir is not None:
+            self.on_open_output_dir()
+        else:
+            self.on_open_output(self.output_dir_entry.get().strip())
+
+    def _state_label(self, state: str) -> str:
+        mapping = {
+            "pending": "等待中",
+            "running": "运行中",
+            "paused": "已暂停",
+            "done": "已完成",
+            "failed": "失败",
+            "cancelled": "已取消",
+        }
+        return mapping.get(state, state)
+
+    def _clear_tasks(self) -> None:
+        for child in self.task_list.winfo_children():
+            child.destroy()
 
     def refresh(self) -> None:
-        for r in self.table.get_children():
-            self.table.delete(r)
-        for tid, task in self.manager.all().items():
-            progress = f"{task.progress_done}/{task.progress_total}" if task.progress_total else "-"
-            state = task.state.value if hasattr(task.state, "value") else str(task.state)
-            self.table.insert("", "end", iid=tid, values=(task.title, state, progress, task.message, task.output_path))
+        self._clear_tasks()
+        tasks = list(self.manager.all().values())
+        if not tasks:
+            empty = soft_frame(self.task_list)
+            empty.grid(row=0, column=0, padx=12, pady=12, sticky="ew")
+            empty.grid_columnconfigure(0, weight=1)
+            label(empty, "暂无后台任务", size=15, weight="bold").grid(row=0, column=0, padx=18, pady=(20, 4), sticky="w")
+            label(empty, "上传长文档并确认后台翻译后，任务进度会显示在这里。", size=12, secondary=True).grid(row=1, column=0, padx=18, pady=(0, 20), sticky="w")
+            return
+        # 最新任务放在上方，方便用户看到当前状态。
+        for row, task in enumerate(reversed(tasks)):
+            self._render_task_card(row, task)
+
+    def _render_task_card(self, row: int, task) -> None:
+        frame = card(self.task_list, corner_radius=14)
+        frame.grid(row=row, column=0, padx=12, pady=(12 if row == 0 else 6, 6), sticky="ew")
+        frame.grid_columnconfigure(0, weight=1)
+        frame.grid_columnconfigure(1, weight=0)
+
+        state = task.state.value if hasattr(task.state, "value") else str(task.state)
+        total = int(task.progress_total or 0)
+        done = int(task.progress_done or 0)
+        ratio = float(done / total) if total else (1.0 if state == "done" else 0.0)
+        percent = int(ratio * 100)
+
+        title = task.title or "未命名任务"
+        label(frame, title, size=14, weight="bold", wraplength=520, justify="left").grid(row=0, column=0, padx=16, pady=(14, 4), sticky="w")
+        state_box = ctk.CTkLabel(
+            frame,
+            text=self._state_label(state),
+            font=font(frame, 12, "bold"),
+            corner_radius=999,
+            fg_color=pair("accent_soft") if state in ("pending", "running", "paused") else pair("card_soft"),
+            text_color=pair("accent") if state in ("pending", "running", "paused") else pair("text_secondary"),
+            padx=10,
+            pady=4,
+        )
+        state_box.grid(row=0, column=1, padx=16, pady=(14, 4), sticky="e")
+
+        message = task.message or "等待任务状态更新"
+        progress_text = f"{done}/{total}" if total else "-"
+        label(frame, f"{message} · 进度 {progress_text} · {percent}%", size=12, secondary=True, wraplength=620, justify="left").grid(row=1, column=0, columnspan=2, padx=16, pady=(0, 8), sticky="w")
+
+        bar = ctk.CTkProgressBar(frame, height=10, corner_radius=999, progress_color=pair("accent"))
+        bar.grid(row=2, column=0, columnspan=2, padx=16, pady=(0, 10), sticky="ew")
+        bar.set(max(0.0, min(1.0, ratio)))
+
+        output_path = str(task.output_path or "暂无输出文件")
+        label(frame, output_path, size=11, secondary=True, wraplength=690, justify="left").grid(row=3, column=0, padx=16, pady=(0, 12), sticky="w")
+
+        actions = ctk.CTkFrame(frame, fg_color="transparent")
+        actions.grid(row=3, column=1, padx=16, pady=(0, 12), sticky="e")
+        modern_button(actions, "暂停", command=lambda tid=task.id: self.pause(tid), kind="secondary", width=54, height=28).pack(side="left", padx=3)
+        modern_button(actions, "继续", command=lambda tid=task.id: self.resume(tid), kind="secondary", width=54, height=28).pack(side="left", padx=3)
+        modern_button(actions, "取消", command=lambda tid=task.id: self.cancel(tid), kind="danger", width=54, height=28).pack(side="left", padx=3)
+        open_btn = modern_button(actions, "打开", command=lambda tid=task.id: self.open_output(tid), kind="secondary", width=54, height=28)
+        open_btn.pack(side="left", padx=3)
+        if not task.output_path:
+            open_btn.configure(state="disabled")
 
     def _tick(self) -> None:
         try:
@@ -548,26 +686,25 @@ class TaskManagerDialog(BaseDialog):
         except Exception:
             pass
 
-    def pause(self) -> None:
-        tid = self._selected()
-        if tid: self.manager.pause(tid)
+    def pause(self, task_id: Optional[str] = None) -> None:
+        if task_id:
+            self.manager.pause(task_id)
         self.refresh()
 
-    def resume(self) -> None:
-        tid = self._selected()
-        if tid: self.manager.resume(tid)
+    def resume(self, task_id: Optional[str] = None) -> None:
+        if task_id:
+            self.manager.resume(task_id)
         self.refresh()
 
-    def cancel(self) -> None:
-        tid = self._selected()
-        if tid: self.manager.cancel(tid)
+    def cancel(self, task_id: Optional[str] = None) -> None:
+        if task_id:
+            self.manager.cancel(task_id)
         self.refresh()
 
-    def open_output(self) -> None:
-        tid = self._selected()
-        if not tid:
+    def open_output(self, task_id: Optional[str] = None) -> None:
+        if not task_id:
             return
-        task = self.manager.get(tid)
+        task = self.manager.get(task_id)
         if task and task.output_path:
             self.on_open_output(task.output_path)
 
@@ -578,7 +715,7 @@ class AboutDialog(BaseDialog):
         box = ctk.CTkTextbox(self, corner_radius=16, font=font(self, 14), fg_color=pair("card"), border_color=pair("border"), border_width=1, text_color=pair("text"))
         box.grid(row=0, column=0, sticky="nsew", padx=14, pady=14)
         box.insert("1.0", (
-            "Translator Pro\n\n"
+            f"{APP_NAME}\n\n"
             "快捷键：\n"
             "Ctrl+Enter：开始翻译\n"
             "Ctrl+Shift+C：复制译文\n\n"
@@ -586,7 +723,7 @@ class AboutDialog(BaseDialog):
             "设置 → API 配置：增删改 API，测试连接。\n"
             "设置 → Agent 配置：管理翻译 Agent 及其 Prompt。\n"
             "设置 → 术语库管理：维护翻译术语。\n"
-            "设置 → 偏好设置：设置并发上限、长文档阈值和界面语言。\n\n"
+            "设置 → 偏好设置：设置并发上限、长文档阈值、输出目录和界面语言。\n\n"
             "说明：PDF 翻译以文本抽取为主，复杂排版可能降级；.doc 需先转换为 .docx。"
         ))
         box.configure(state="disabled")

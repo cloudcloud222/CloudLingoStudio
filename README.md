@@ -1,12 +1,25 @@
-# TranslatorPro
+# CloudLingo Studio（云译工坊）
 
-TranslatorPro 是一个基于 Python 和 CustomTkinter 开发的桌面端文档翻译工具。
+CloudLingo Studio（云译工坊）是一个基于 Python 和 CustomTkinter 开发的 AI 文档翻译与术语管理桌面工作台。
 
 项目最开始是为了解决自己处理英文论文、技术文档和长文档材料时遇到的一些实际问题：网页端大模型适合临时问答，但在长文档翻译时会遇到上下文长度限制、术语前后不一致、结果不方便保存、Prompt 需要反复复制等问题。
 
-因此我把常用的文档翻译流程封装成了一个本地桌面工具，方便进行文本输入、文档上传、模型配置、Agent Prompt 配置、术语管理、历史记录和译文导出。
+因此我把常用的文档翻译流程封装成了一个本地桌面工具，方便进行文本输入、文档上传、模型配置、Agent Prompt 配置、术语管理、历史记录、后台任务进度查看和译文导出。
 
 项目本身不训练翻译模型，重点放在大模型 API 的应用层封装和长文档处理流程上。
+
+
+## 界面预览
+
+主界面：
+
+![CloudLingo Studio 主界面](docs/screenshots/01_cloudlingo_main.png)
+
+后台任务中心：
+
+![后台任务中心](docs/screenshots/03_cloudlingo_task_panel.png)
+
+术语库与 Agent 配置截图见 `docs/screenshots/`。
 
 ## 主要功能
 
@@ -19,8 +32,8 @@ TranslatorPro 是一个基于 Python 和 CustomTkinter 开发的桌面端文档�
 * 支持 Agent Prompt 配置，可针对不同翻译场景切换提示词
 * 支持术语库管理，用于提升技术文档、专利材料等场景下的术语一致性
 * 支持历史记录保存，便于查看和复用之前的翻译结果
-* 支持长文档分块、后台任务、暂停、继续和取消
-* 支持译文导出为 TXT、DOCX 或 PDF
+* 支持长文档分块、后台任务中心、多任务进度展示、暂停、继续和取消
+* 支持译文导出为 TXT、DOCX 或 PDF，并支持在偏好设置中配置后台任务输出目录
 * 支持 PyInstaller 打包为 Windows 桌面程序
 
 ## 技术栈
@@ -36,7 +49,7 @@ TranslatorPro 是一个基于 Python 和 CustomTkinter 开发的桌面端文档�
 ## 项目结构
 
 ```text
-TranslatorPro/
+CloudLingoStudio/
 ├── app.py
 ├── translator_pro/
 │   ├── api/              # 大模型 API 调用与 Provider 适配
@@ -53,8 +66,8 @@ TranslatorPro/
 克隆项目后进入目录：
 
 ```bash
-git clone https://github.com/cloudcloud222/TranslatorPro.git
-cd TranslatorPro
+git clone https://github.com/cloudcloud222/CloudLingoStudio.git
+cd CloudLingoStudio
 ```
 
 创建并激活虚拟环境：
@@ -84,13 +97,13 @@ python app.py
 首次启动后，程序会在用户目录下生成本地配置文件：
 
 ```text
-~/.translator_pro/config.json
+~/.cloudlingo_studio/config.json
 ```
 
 文档翻译的输出结果默认保存在：
 
 ```text
-~/.translator_pro/outputs/
+~/.cloudlingo_studio/outputs/（可在 设置 → 偏好设置 中修改）
 ```
 
 ## 基本使用流程
@@ -138,7 +151,7 @@ knowledge base -> 知识库
 2. 失败后重试成本较高
 3. 用户无法感知任务进度
 
-因此 TranslatorPro 会先对文档进行文本抽取，再按段落和长度进行分块。每个分块单独调用模型，最后再合并结果并导出。
+因此 CloudLingo Studio 会先对文档进行文本抽取，再按段落和长度进行分块。每个分块单独调用模型，最后再合并结果并导出。
 
 当前版本主要关注文本内容处理。对于复杂 PDF 版式，例如双栏论文、扫描件、复杂表格和公式，暂时不能保证完整还原排版。
 
@@ -150,11 +163,13 @@ knowledge base -> 知识库
 
 后台任务支持：
 
-* 任务进度展示
+* 独立后台任务中心，可自由拖动和缩放
+* 多任务进度展示
 * 暂停
 * 继续
 * 取消
 * 输出路径记录
+* 在任务中心直接设置、保存和打开后台任务输出目录
 
 ## 打包
 
@@ -206,4 +221,4 @@ __pycache__/
 
 ## 项目定位
 
-TranslatorPro 更适合作为一个 LLM 应用开发项目来理解。它的重点不是模型训练，而是围绕真实文档处理场景，完成模型接入、Prompt 管理、文件解析、长文本分块、流式输出、历史记录和结果导出等工程流程封装。
+CloudLingo Studio 更适合作为一个 LLM 应用开发项目来理解。它的重点不是模型训练，而是围绕真实文档处理场景，完成模型接入、Prompt 管理、文件解析、长文本分块、流式输出、历史记录和结果导出等工程流程封装。
