@@ -21,6 +21,7 @@ from translator_pro.gui.dialogs import (
     HistoryDialog,
     PreferencesDialog,
     TaskManagerDialog,
+    GlossaryCheckDialog,
     AboutDialog,
 )
 from translator_pro.gui.ui_style import (
@@ -40,7 +41,7 @@ from translator_pro.gui.ui_style import (
     textbox_insert_user_text,
     setup_ttk_style,
 )
-from translator_pro.utils.glossary import glossary_to_prompt
+from translator_pro.utils.glossary import glossary_to_prompt, analyze_glossary_hits
 from translator_pro.utils.i18n import I18n
 from translator_pro.utils.storage import AppStorage
 from translator_pro.utils.tasks import BackgroundTask, BackgroundTaskManager
@@ -243,8 +244,9 @@ class TranslatorProApp(ctk.CTk):
         self.pin_compare_btn = modern_button(ctrl, "固定对比", command=self.pin_compare, kind="secondary", height=36)
         self.pin_compare_btn.grid(row=13, column=0, padx=20, pady=5, sticky="ew")
         modern_button(ctrl, "导出译文", command=self.export_result, kind="secondary", height=36).grid(row=14, column=0, padx=20, pady=5, sticky="ew")
+        modern_button(ctrl, "术语检查", command=self.check_glossary_hits, kind="secondary", height=36).grid(row=15, column=0, padx=20, pady=5, sticky="ew")
         self.task_btn = modern_button(ctrl, "后台任务中心", command=self.toggle_task_panel, kind="secondary", height=36)
-        self.task_btn.grid(row=15, column=0, padx=20, pady=(5, 20), sticky="ew")
+        self.task_btn.grid(row=16, column=0, padx=20, pady=(5, 20), sticky="ew")
 
     def _build_result_card(self, main) -> None:
         self.right_card = card(main)
@@ -705,6 +707,25 @@ class TranslatorProApp(ctk.CTk):
             self.pin_compare_btn.configure(text="关闭对比")
         self._show_toast("已开启对比", "当前译文已固定，可重新翻译后对照查看。")
 
+
+    def check_glossary_hits(self) -> None:
+        source = textbox_get_clean(self.source_text)
+        result = textbox_get_clean(self.result_text)
+        if not source:
+            self._show_toast("无法检查", "原文为空。")
+            return
+        if not result:
+            self._show_toast("无法检查", "译文为空，请先完成翻译。")
+            return
+        glossary = self.storage.get_glossary()
+        if not glossary:
+            self._show_toast("暂无术语", "请先在术语库中添加术语。")
+            return
+        analysis = analyze_glossary_hits(source, result, glossary)
+        if int(analysis.get("relevant_terms", 0) or 0) == 0:
+            self._show_toast("没有相关术语", "术语库中的词没有出现在本次原文里。")
+        GlossaryCheckDialog(self, analysis)
+
     def export_result(self) -> None:
         result = textbox_get_clean(self.result_text)
         if not result:
@@ -806,7 +827,7 @@ class TranslatorProApp(ctk.CTk):
             self.task_btn.configure(text=f"后台任务{suffix} {arrow}")
         else:
             self.status_task_icon.configure(text="")
-            self.task_btn.configure(text=f"后台任务")
+            self.task_btn.configure(text=f"后台任务 {arrow}")
         if self.is_task_panel_visible:
             self._refresh_task_panel()
         self.after(300, self._spin_task_icon)

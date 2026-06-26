@@ -410,6 +410,85 @@ class GlossaryDialog(BaseDialog):
             self.new_term()
 
 
+class GlossaryCheckDialog(BaseDialog):
+    def __init__(self, master, analysis: Dict[str, Any]) -> None:
+        super().__init__(master, "术语命中率检查", "880x600")
+        self.analysis = analysis
+        self._build()
+
+    def _build(self) -> None:
+        root = card(self, corner_radius=16)
+        root.grid(row=0, column=0, padx=14, pady=14, sticky="nsew")
+        root.grid_columnconfigure(0, weight=1)
+        root.grid_rowconfigure(2, weight=1)
+
+        relevant = int(self.analysis.get("relevant_terms", 0) or 0)
+        hit = int(self.analysis.get("hit_terms", 0) or 0)
+        missing = int(self.analysis.get("missing_terms", 0) or 0)
+        valid = int(self.analysis.get("valid_terms", 0) or 0)
+        rate = float(self.analysis.get("hit_rate", 0.0) or 0.0)
+
+        label(root, "术语命中率检查", size=20, weight="bold").grid(row=0, column=0, padx=14, pady=(14, 4), sticky="w")
+        summary = (
+            f"术语库共 {valid} 条；本次原文命中 {relevant} 条相关术语；"
+            f"译文命中 {hit} 条，未命中 {missing} 条，命中率 {rate:.0%}。"
+        )
+        label(root, summary, size=13, secondary=True, wraplength=760, justify="left").grid(row=1, column=0, padx=14, pady=(0, 10), sticky="w")
+
+        self.table = ttk.Treeview(
+            root,
+            columns=("status", "source", "target", "expected", "direction", "note"),
+            show="headings",
+            height=15,
+        )
+        headings = [
+            ("status", "状态", 70),
+            ("source", "原术语", 150),
+            ("target", "目标译名", 150),
+            ("expected", "本次期望出现", 150),
+            ("direction", "判断方向", 130),
+            ("note", "备注", 180),
+        ]
+        for col, title, width in headings:
+            self.table.heading(col, text=title)
+            self.table.column(col, width=width)
+        self.table.grid(row=2, column=0, padx=14, pady=(0, 12), sticky="nsew")
+
+        for idx, row in enumerate(self.analysis.get("rows", [])):
+            self.table.insert("", "end", iid=str(idx), values=(
+                row.get("status", ""),
+                row.get("source", ""),
+                row.get("target", ""),
+                row.get("expected", ""),
+                row.get("direction", ""),
+                row.get("note", ""),
+            ))
+
+        tips = (
+            "说明：这里做的是简单字符串匹配，主要用于翻译后快速自查。"
+            "如果模型用了同义表达、大小写或空格变化，可能需要人工确认。"
+        )
+        label(root, tips, size=12, secondary=True, wraplength=760, justify="left").grid(row=3, column=0, padx=14, pady=(0, 8), sticky="w")
+
+        bottom = ctk.CTkFrame(root, fg_color="transparent")
+        bottom.grid(row=4, column=0, padx=14, pady=(0, 14), sticky="ew")
+        modern_button(bottom, text="复制报告", command=self.copy_report, kind="secondary").pack(side="left", padx=4)
+        modern_button(bottom, text="关闭", command=self.destroy, kind="secondary").pack(side="right", padx=4)
+
+    def copy_report(self) -> None:
+        relevant = int(self.analysis.get("relevant_terms", 0) or 0)
+        hit = int(self.analysis.get("hit_terms", 0) or 0)
+        missing = int(self.analysis.get("missing_terms", 0) or 0)
+        rate = float(self.analysis.get("hit_rate", 0.0) or 0.0)
+        lines = [f"术语命中率：{hit}/{relevant}，未命中 {missing}，命中率 {rate:.0%}"]
+        for row in self.analysis.get("rows", []):
+            if row.get("hit") is False:
+                lines.append(f"未命中：{row.get('source', '')} -> {row.get('target', '')}，期望出现：{row.get('expected', '')}")
+        self.clipboard_clear()
+        self.clipboard_append("\n".join(lines))
+        messagebox.showinfo("已复制", "术语检查报告已复制到剪贴板。")
+
+
 class HistoryDialog(BaseDialog):
     def __init__(self, master, storage, on_reuse: Callable[[str, str], None]) -> None:
         super().__init__(master, "历史记录", "900x560")
